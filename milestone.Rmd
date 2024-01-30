@@ -1,0 +1,224 @@
+---
+title: "Prediction algoritm for words | Milestone report"
+author: "PP"
+date: "2023-10-10"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+## What and why
+Capstone project of the Coursera data science specialization consist of milestone report in week 2. The aim of this report is to show an understanding of the various statistical properties of the data set that can later be used when building the word prediction model. Using exploratory data analysis, this report describes the major features of available data. Later it summarizes my plans for creating the word prediction model.
+
+## Environment setup
+```{r}
+rm(list = ls(all.names = TRUE))
+library(tidyverse)
+library(readtext)
+library(quanteda)
+library(quanteda.textstats)
+library(quanteda.textplots)
+library(quanteda.textmodels)
+library(gt)
+```
+
+## Getting data
+I am using data from three available sources in english - blogs, news, twitter. Data from  provided link are downloaded in zip file, unzipped and directory structure is visualized.
+```{r}
+# download and unzip
+url <- "https://d396qusza40orc.cloudfront.net/dsscapstone/dataset/Coursera-SwiftKey.zip"
+download_zip <- "download.zip"
+
+if(!file.exists(download_zip)){
+  download.file(url, destfile = download_zip)
+}
+
+if(!dir.exists("final")){
+  unzip(download_zip)
+}
+
+list <- unzip(download_zip, list = T)
+file_list <- gt(list)
+file_list
+```
+
+## Basic exploratory analysis of provided data
+```{r}
+path_twitter <- list[11,1]
+path_news <- list[12,1]
+path_blogs <- list[13,1]
+
+file_size <- c(round(file.size(path_twitter)/1024^2, 1), round(file.size(path_news)/1024^2, 1), round(file.size(path_blogs)/1024^2, 1))
+
+con <- file(path_twitter, "r")
+tw1 <- readLines(con, 3)
+close(con)
+
+con <- file(path_news, "r")
+ne1 <- readLines(con, 3)
+close(con)
+
+con <- file(path_blogs, "r")
+bl1 <- readLines(con, 3)
+close(con)
+
+txt_raw <- readtext(list[10,1], docvarsfrom = "filenames", docvarnames = c("language", "source"))
+corpus_raw <- corpus(txt_raw) # preparing raw corpus
+sentence_no <- c(nsentence(corpus_raw[3]), nsentence(corpus_raw[2]), nsentence(corpus_raw[1]))
+```
+
+Basic parameters of source files are listed below.
+```{r}
+# visualization of exploratory analysis outcome
+source_file <- c("US Twitter", "US News", "US Blogs")
+param <- data.frame(source_file, file_size, sentence_no)
+table_gt <- gt(param)
+table_gt
+```
+There are 3 rather big txt files of size from 159MB to 200MB. These 3 files contain from hundreds of thousands to millions of sentences.
+          
+Example texts, first three sentences are available below.
+```{r}
+example_text <- data.frame(tw1, ne1, bl1)
+names(example_text) <- source_file
+example_gt <- example_text|> gt()
+example_gt
+```
+It seems (as expected) I am dealing with "typical" natural language data with variability, wide range of expressions, diverse vocabulary, grammar structures, regional dialects, with ambiguity, context-dependent meanings, with creativity, novel combinations of words and ideas, with imperfection, with errors, hesitations, informal expressions.
+
+To be able to work efficiently with corpus, taking into account limitations of my PC, I am going to work with only 2% of original corpus.
+
+## Further exploratory analysis using simplified corpus
+
+### Creation of simplified corpus
+I am merging content of all three files because I would like to train my model on one train set in later stages of this project. I am using only 2% of original corpus as already stated.
+```{r}
+# sub-setting corpus to be easier to handle in following steps
+corpus_sentences <- corpus_reshape(corpus_raw, to = "sentences")
+
+corpus_samples <- corpus_sample(corpus_sentences, size = 0.02*ndoc(corpus_sentences))
+corpus_samples_stats <- summary(corpus_samples)
+ndoc(corpus_samples)
+head(corpus_samples_stats)
+```
+Simplified corpus contains around 96000 sentences.
+
+### Tokenization
+Once I have a corpus, I can create basic token list with punctuation, numbers, urls removed.
+```{r}
+token_samples <- tokens(corpus_samples, tolower = TRUE, remove_punct = TRUE, remove_numbers = TRUE, remove_url = TRUE)
+```
+
+Preparation of Document-Feature Matrix (DFM) is my next step. I will use it for couple of following analysis and steps of this project.
+```{r}
+dfm_samples <- dfm(token_samples)
+dfm_samples[, 1:5]
+```
+I decided to NOT remove stop words as I expect them to be important for word prediction as they are extensively used in sentences.
+
+What about to check if the word data is part of my corpus and how is it used in context.
+```{r}
+kw_data <- kwic(token_samples, pattern = "data")
+nrow(kw_data)
+gt(head(kw_data, 5))
+```
+There are 122 occurences of word data in my data set. I visualized 5 examples of this word in context. Just for fun.
+
+### Visualizations
+```{r, echo=FALSE}
+set.seed(8791)
+textplot_wordcloud(dfm_samples, min_count = 100, random_order = FALSE,
+                   rotation = .25, 
+                   color = RColorBrewer::brewer.pal(10,"RdBu"))
+```
+
+Couple of visualizations can be helpful to get better understanding of corpus content.
+
+```{r}
+top_f <- data.frame(data.frame(word = names(topfeatures(dfm_samples, 20)), n = topfeatures(dfm_samples, 20)))
+
+top_f %>%
+  ggplot(aes(n, reorder(word,n))) +
+  geom_col() +
+  labs(x="Frequency",y = "Unigram") +
+  theme_light()
+```
+
+We can see that words mostly identified as stop words are the most common in our data set. It is another prediction that they are needed in our prediction model.
+
+### Creating ngrams
+Unigrams are already available, but I would like to have a look also at bi, tri, quad grams as these could be useful for our prediction model. This is a computationally intensive process and it needs a lot of memory. I might need to save ngrams to hdd during optimization of my model.
+```{r}
+bigrams <- tokens_ngrams(token_samples, n = 2)
+trigrams <- tokens_ngrams(token_samples, n = 3)
+quadgrams <- tokens_ngrams(token_samples, n = 4)
+
+dfm_bi <- dfm(bigrams)
+dfm_tri <- dfm(trigrams)
+dfm_quad <- dfm(quadgrams)
+
+bigram_tot <- enframe(sort(colSums(dfm_bi),TRUE))
+trigram_tot <- enframe(sort(colSums(dfm_tri),TRUE))
+quadgram_tot <- enframe(sort(colSums(dfm_quad),TRUE))
+```
+
+Now we can have a look which are the most common ngrams.
+```{r, echo=FALSE}
+library(patchwork)
+# Plot for bigrams
+plot_bigram <- ggplot(bigram_tot[1:10,], aes(value, reorder(name, value))) +
+  geom_col() +
+  labs(x = "Frequency", y = "Bigram") +
+  theme_light()
+
+# Plot for trigrams
+plot_trigram <- ggplot(trigram_tot[1:10,], aes(value, reorder(name, value))) +
+  geom_col() +
+  labs(x = "Frequency", y = "Trigram") +
+  theme_light()
+
+# Plot for quadgrams
+plot_quadgram <- ggplot(quadgram_tot[1:10,], aes(value, reorder(name, value))) +
+  geom_col() +
+  labs(x = "Frequency", y = "Quadgram") +
+  theme_light()
+
+# Combine plots in one row using patchwork
+combined_plots <- plot_bigram + plot_trigram + plot_quadgram
+
+# Display the combined plot
+combined_plots
+```
+
+
+## Plans of next action
+My initial steps are barely start of the real work. There are many things I need to tackle. 
+
+### Ideas about models
+**Bigram Model with Laplace Smoothing**
+Concept: In a bigram model, the probability of a word depends only on the preceding word. Laplace smoothing is applied to handle cases where certain bigrams are unseen in the training data.
+
+Implementation: Calculate bigram probabilities by counting occurrences of word pairs and apply Laplace smoothing to account for unseen combinations. To predict the next word, use the bigram with the highest probability given the current word.
+
+**Trigram Model with Back-off**
+Concept: A trigram model predicts the next word based on the two preceding words. Back-off is employed to gracefully handle cases where a trigram is unseen, falling back to a bigram or unigram model.
+
+Implementation: Calculate trigram probabilities and, if a trigram is unseen, fall back to the corresponding bigram or unigram probabilities. Choose the word with the highest probability for prediction.
+
+These models represent a progression in complexity from the bigram to the trigram model. They serve as foundational building blocks for more advanced N-gram models and can be implemented with relative simplicity using basic probability calculations.
+
+### My next steps
+- Calculation of probabilities for each ngram
+- Application of smoothing
+- Implementation of prediction logic
+- Evaluation of model performance
+- Iterative refinement
+- Back-off strategies
+- Optimization for computational efficiency
+
+
+
+
+

@@ -1,0 +1,52 @@
+---
+title: "WordPred"
+author: "10-2023 by PP"
+format: revealjs
+editor: visual
+---
+
+## Introduction to WordPred
+
+This project is the final part of a 10 course [Data Science track by Johns Hopkins University on Coursera](https://www.coursera.org/specializations/jhu-data-science). Asignment was to clean and analyze a large corpus of unstructured text and build a word prediction model and use it in a web application.
+
+-   My Shiny app WordPred is available [here](https://pavel-droid.shinyapps.io/WordPred/).
+
+-   Code used to prepare model, create an app is available [here](https://github.com/Pavel-droid/SwiftKey-Capstone).
+
+I hope you are going to enjoy my work.
+
+## Data preparation
+
+30000 lines from three files with natural language data have been used.
+
+Corpus, tokens, n-grams and document feature matrixes have been created
+
+-   tokens have been cleaned - removed numbers, punctuation, urls, symbols, stemmed
+
+Data tables with words of n-grams and n-gram frequencies have been created and saved as rds files.
+
+## Predictive model
+
+-   **N-Gram Model:** The model utilizes n-grams, capturing contextual information by considering sequences of consecutive words.
+
+-   **Back-Off Strategy:** Implements a back-off algorithm to handle unseen n-grams, gracefully falling back to lower-order n-grams in case of sparse data or missing probabilities.
+
+-   **Probabilistic Prediction:** Predicts the probability of the next word in a sequence based on the context of the preceding words, enabling language prediction in natural language processing tasks.
+
+## Model accuracy 
+
+Each box is average result of 10x1000 predictions from one, two, three words as input.
+
+![](accuracy_test.png)
+
+## Conclusions
+
+-   I created working word predicting model, using n-grams and back-off algorithm.
+
+-   Accuracy of this model is not great, as it uses very limited corpus and it is also built on simple n-gram prediction.
+
+-   There are for sure plenty of other approaches to make it more accurate, but this was not a target of this project.
+
+    Thx
+
+    P
